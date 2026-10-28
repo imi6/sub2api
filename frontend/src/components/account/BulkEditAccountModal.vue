@@ -1788,7 +1788,7 @@ const openAIEndpointCapabilityOptions = computed<
 >(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
-  { value: 'seedance', label: 'Seedance (Ark)' }
+  { value: 'seedance', label: 'Seedance' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')

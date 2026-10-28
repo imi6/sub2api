@@ -97,6 +97,12 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
+		// Seedance groups, and OpenAI groups with legacy opt-in accounts, reach
+		// Seedance channels whose profile speaks /v1/videos.
+		if platform := getGroupPlatform(c); platform == service.PlatformSeedance || platform == service.PlatformOpenAI {
+			h.OpenAIGateway.SeedanceVideoCreate(c)
+			return
+		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": gin.H{
@@ -107,10 +113,18 @@ func RegisterGatewayRoutes(
 	}
 	videoStatusHandler := func(c *gin.Context) {
 		// Video status requests do not carry a model, so composite groups cannot
-		// be resolved by compositeTargetPlatformMiddleware. Route them through
-		// the Grok handler and let scheduler/account selection enforce capacity.
-		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
+		// be resolved by compositeTargetPlatformMiddleware. Composite lookups pick
+		// Seedance or Grok from the task's submission binding.
+		if getGroupPlatform(c) == service.PlatformComposite {
+			h.OpenAIGateway.CompositeVideoStatus(c)
+			return
+		}
+		if getGroupPlatform(c) == service.PlatformGrok {
 			h.OpenAIGateway.GrokVideoStatus(c)
+			return
+		}
+		if platform := getGroupPlatform(c); platform == service.PlatformSeedance || platform == service.PlatformOpenAI {
+			h.OpenAIGateway.SeedanceVideoStatus(c)
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -123,10 +137,18 @@ func RegisterGatewayRoutes(
 	}
 	videoContentHandler := func(c *gin.Context) {
 		// Video content requests do not carry a model, so composite groups cannot
-		// be resolved by compositeTargetPlatformMiddleware. Route them through
-		// the Grok handler just like video status lookups.
-		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
+		// be resolved by compositeTargetPlatformMiddleware. Composite lookups pick
+		// Seedance or Grok from the task's submission binding, like status.
+		if getGroupPlatform(c) == service.PlatformComposite {
+			h.OpenAIGateway.CompositeVideoContent(c)
+			return
+		}
+		if getGroupPlatform(c) == service.PlatformGrok {
 			h.OpenAIGateway.GrokVideoContent(c)
+			return
+		}
+		if platform := getGroupPlatform(c); platform == service.PlatformSeedance || platform == service.PlatformOpenAI {
+			h.OpenAIGateway.SeedanceVideoContent(c)
 			return
 		}
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)

@@ -31,6 +31,18 @@ func NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds int) int {
 	return durationSeconds
 }
 
+// 非 xAI 视频渠道（如 Seedance 4-30 秒）使用更宽的计费上限，避免长视频被按 15 秒少收。
+const VideoBillingExtendedMaxDurationSeconds = 30
+
+// NormalizeVideoBillingDurationSecondsForModel 按模型族选择计费时长上限：
+// grok-imagine-video 沿用 xAI 的 15 秒上限，其他视频模型放宽到 30 秒。
+func NormalizeVideoBillingDurationSecondsForModel(model string, durationSeconds int) int {
+	if isGrokVideoBillingModel(model) || durationSeconds <= VideoBillingMaxDurationSeconds {
+		return NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds)
+	}
+	return min(durationSeconds, VideoBillingExtendedMaxDurationSeconds)
+}
+
 // LookupVideoBillingResolution 归一化分辨率并报告是否为已知档位。
 // 配置解析路径必须用它而不是 OrDefault：把无法识别的档位（如 "4k"、拼错的
 // "1080i"）静默折算成 480p，会让管理员配的高分辨率单价被挂到低分辨率档上。

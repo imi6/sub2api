@@ -1918,9 +1918,15 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		return false
 	}
 	if capability == OpenAIEndpointCapabilitySeedance {
-		configured, _ := a.openAIEndpointCapabilitySet()
-		return configured["seedance"] && a.Platform == PlatformOpenAI && a.Type == AccountTypeAPIKey &&
-			strings.TrimSpace(a.GetCredential("base_url")) != ""
+		return a.IsSeedanceChannel() && a.SeedanceProtocol() == SeedancePresetArk
+	}
+	if capability == OpenAIEndpointCapabilitySeedanceVideos {
+		return a.IsSeedanceChannel() && a.SeedanceProtocol() == SeedancePresetOpenAIVideos
+	}
+	if a.Platform == PlatformSeedance {
+		// Video-only channel: never receives chat, responses, embeddings or images.
+		// Empty capability stays allowed so bound task lookups can re-admit the owner.
+		return capability == ""
 	}
 	if capability == "" {
 		return true

@@ -71,6 +71,11 @@
     <rect x="65.5996" y="44.8008" width="9.6" height="28.8" rx="4.8" />
     <rect x="36.8008" y="44.8008" width="9.6" height="28.8" rx="4.8" />
   </svg>
+  <!-- Seedance video channel (generic film frame with play mark) -->
+  <svg v-else-if="platform === 'seedance'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M10 9.5v5l4.5-2.5L10 9.5z" fill="currentColor" stroke="none" />
+  </svg>
   <!-- Composite group icon -->
   <svg v-else-if="platform === 'composite'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <circle cx="6" cy="12" r="3" />

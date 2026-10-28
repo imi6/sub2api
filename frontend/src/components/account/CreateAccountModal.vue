@@ -263,6 +263,20 @@
             <PlatformIcon :platform="spec.id" size="sm" />
             {{ spec.display_name }}
           </button>
+          <button
+            type="button"
+            data-testid="platform-button-seedance"
+            @click="selectSeedancePlatform()"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'seedance'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="seedance" size="sm" />
+            Seedance
+          </button>
         </div>
       </div>
 
@@ -3582,6 +3596,13 @@
       </div>
 
       <!-- OpenAI APIKey Responses API support mode -->
+      <!-- Seedance 渠道配置（独立平台） -->
+      <div v-if="form.platform === 'seedance'" data-testid="seedance-platform-config">
+        <label class="input-label">{{ t('admin.accounts.seedance.title') }}</label>
+        <p class="input-hint mb-2">{{ t('admin.accounts.seedance.description') }}</p>
+        <SeedanceProfileEditor v-model="seedanceProfileForm" />
+      </div>
+
       <div
         v-if="form.platform === 'openai' && accountCategory === 'apikey'"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3628,6 +3649,11 @@
             </label>
           </div>
           <p class="input-hint">{{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}</p>
+        </div>
+        <div v-if="seedanceCapabilityEnabled">
+          <label class="input-label">{{ t('admin.accounts.seedance.title') }}</label>
+          <p class="input-hint mb-2">{{ t('admin.accounts.seedance.description') }}</p>
+          <SeedanceProfileEditor v-model="seedanceProfileForm" />
         </div>
       </div>
 
@@ -4167,6 +4193,13 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import { applyExplicitCacheUpstreamCredentials, isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import SeedanceProfileEditor from '@/components/account/SeedanceProfileEditor.vue'
+import {
+  applySeedanceProfile,
+  emptySeedanceProfileForm,
+  validateSeedanceProfile,
+  type SeedanceProfileForm
+} from '@/components/account/seedanceProfile'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
@@ -4283,6 +4316,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
       return 'https://api.x.ai/v1'
     case 'typesafe':
       return 'https://api.typesafe.ai'
+    case 'seedance':
+      return 'https://your-seedance-channel.example.com'
     default:
       return 'https://api.anthropic.com'
   }
@@ -4529,6 +4564,14 @@ function selectTypeSafePlatform() {
   apiKeyBaseUrl.value = 'https://api.typesafe.ai'
   allowedModels.value = ['jev-latest']
 }
+function selectSeedancePlatform() {
+  form.platform = 'seedance'
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  // Seedance 渠道没有官方默认地址，Base URL 必须由管理员按渠道填写。
+  apiKeyBaseUrl.value = ''
+  seedanceProfileForm.value = emptySeedanceProfileForm('openai_videos')
+}
 function selectGenericMultiProtocolPlatform(platform: string) {
   form.platform = platform
   form.type = 'apikey'
@@ -4710,6 +4753,13 @@ const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const seedanceProfileForm = ref<SeedanceProfileForm>(emptySeedanceProfileForm())
+const seedanceCapabilityEnabled = computed(() => openAIEndpointCapabilities.value.includes('seedance'))
+// 渠道配置生效：独立的 Seedance 平台，或旧版 OpenAI API Key 账号勾选了 Seedance 能力。
+const seedanceProfileActive = computed(() =>
+  form.platform === 'seedance' ||
+  (form.platform === 'openai' && accountCategory.value === 'apikey' && seedanceCapabilityEnabled.value)
+)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -4812,7 +4862,7 @@ const openAITextEndpointCapabilityLabel = computed(() => {
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
-  { value: 'seedance', label: 'Seedance (Ark)' }
+  { value: 'seedance', label: 'Seedance' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
@@ -5149,6 +5199,8 @@ watch(
               ? 'https://api.x.ai/v1'
               : newPlatform === 'typesafe'
                 ? 'https://api.typesafe.ai'
+              : newPlatform === 'seedance'
+                ? ''
               : 'https://api.anthropic.com'
     }
     // Clear model-related settings
@@ -5212,6 +5264,7 @@ watch(
       openaiPassthroughEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+      seedanceProfileForm.value = emptySeedanceProfileForm()
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
@@ -5674,6 +5727,7 @@ const resetForm = () => {
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  seedanceProfileForm.value = emptySeedanceProfileForm()
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
@@ -6105,6 +6159,18 @@ const handleSubmit = async () => {
     appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
     return
   }
+  // Seedance 渠道没有默认地址：Base URL 必填，且渠道配置需先通过校验。
+  if (form.platform === 'seedance' && !apiKeyBaseUrl.value.trim()) {
+    appStore.showError(t('admin.accounts.seedance.errors.baseUrlRequired'))
+    return
+  }
+  if (seedanceProfileActive.value) {
+    const seedanceError = validateSeedanceProfile(seedanceProfileForm.value)
+    if (seedanceError) {
+      appStore.showError(t(seedanceError))
+      return
+    }
+  }
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
@@ -6214,6 +6280,7 @@ const handleSubmit = async () => {
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
+  applySeedanceProfile(credentials, seedanceProfileActive.value, seedanceProfileForm.value)
 
   form.credentials = credentials
   const extra = buildAnthropicExtra(buildOpenAIExtra())
@@ -6317,7 +6384,15 @@ const createAccountAndFinish = async (
   }
   if (platform === 'openai') {
     if (type === 'apikey') {
+      if (seedanceCapabilityEnabled.value) {
+        const seedanceError = validateSeedanceProfile(seedanceProfileForm.value)
+        if (seedanceError) {
+          appStore.showError(t(seedanceError))
+          return
+        }
+      }
       applyOpenAIEndpointCapabilities(credentials)
+      applySeedanceProfile(credentials, seedanceCapabilityEnabled.value, seedanceProfileForm.value)
     }
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {

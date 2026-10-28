@@ -55,7 +55,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	platform := service.PlatformGrok
 	noAccountCode, noAccountMessage := "grok_media_no_eligible_account", "No eligible Grok media accounts"
 	if endpoint.IsSeedance() {
-		platform = service.PlatformOpenAI
+		platform = seedanceSchedulingPlatform(c)
 		noAccountCode, noAccountMessage = "seedance_no_eligible_account", "No eligible Seedance accounts"
 	}
 	streamStarted := false
@@ -128,7 +128,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
 
 	if endpoint.IsGenerationRequest() {
-		if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		// Dedicated Seedance groups exist only for video; the image-generation
+		// switch is not shown for them and must not block their only use.
+		seedanceGroup := endpoint.IsSeedance() && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformSeedance
+		if !seedanceGroup && !service.GroupAllowsImageGeneration(apiKey.Group) {
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
 		}
@@ -223,6 +226,10 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 	routingStart := time.Now()
 	requiredCapability := grokMediaRequiredCapability(endpoint)
+	if endpoint.IsSeedance() && c.GetBool(ctxKeySeedanceVideosProtocol) {
+		// /v1/videos entry: only channels whose profile speaks that protocol.
+		requiredCapability = service.OpenAIEndpointCapabilitySeedanceVideos
+	}
 	var accountReleaseFunc func()
 	releaseAccount := func() {
 		if accountReleaseFunc != nil {

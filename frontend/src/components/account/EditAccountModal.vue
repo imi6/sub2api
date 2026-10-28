@@ -2156,6 +2156,17 @@
         </div>
       </div>
 
+      <!-- Seedance 渠道配置（独立平台） -->
+      <div
+        v-if="account?.platform === 'seedance'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="seedance-platform-config"
+      >
+        <label class="input-label">{{ t('admin.accounts.seedance.title') }}</label>
+        <p class="input-hint mb-2">{{ t('admin.accounts.seedance.description') }}</p>
+        <SeedanceProfileEditor v-model="seedanceProfileForm" />
+      </div>
+
       <!-- OpenAI APIKey Responses API support mode -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'apikey'"
@@ -2209,6 +2220,11 @@
             </label>
           </div>
           <p class="input-hint">{{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}</p>
+        </div>
+        <div v-if="seedanceCapabilityEnabled">
+          <label class="input-label">{{ t('admin.accounts.seedance.title') }}</label>
+          <p class="input-hint mb-2">{{ t('admin.accounts.seedance.description') }}</p>
+          <SeedanceProfileEditor v-model="seedanceProfileForm" />
         </div>
       </div>
 
@@ -3424,6 +3440,14 @@ import {
 } from '@/utils/geminiExplicitCache'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import SeedanceProfileEditor from '@/components/account/SeedanceProfileEditor.vue'
+import {
+  applySeedanceProfile,
+  emptySeedanceProfileForm,
+  readSeedanceProfile,
+  validateSeedanceProfile,
+  type SeedanceProfileForm
+} from '@/components/account/seedanceProfile'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
   applyAntigravityProjectID,
@@ -4155,6 +4179,13 @@ const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
+const seedanceProfileForm = ref<SeedanceProfileForm>(emptySeedanceProfileForm())
+const seedanceCapabilityEnabled = computed(() => openAIEndpointCapabilities.value.includes('seedance'))
+// 渠道配置生效：独立的 Seedance 平台，或旧版 OpenAI API Key 账号勾选了 Seedance 能力。
+const seedanceProfileActive = computed(() =>
+  props.account?.platform === 'seedance' ||
+  (props.account?.platform === 'openai' && props.account?.type === 'apikey' && seedanceCapabilityEnabled.value)
+)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
@@ -4316,7 +4347,7 @@ const openAITextEndpointCapabilityLabel = computed(() => {
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
   { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
-  { value: 'seedance', label: 'Seedance (Ark)' }
+  { value: 'seedance', label: 'Seedance' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
@@ -4470,6 +4501,8 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
   if (props.account?.platform === 'typesafe') return 'https://api.typesafe.ai'
+  // Seedance 没有官方地址：保留账号已保存的 Base URL，清空时由提交校验拦截。
+  if (props.account?.platform === 'seedance') return ''
   // CN 供应商：按当前模式/协议回落到官方预设（清空输入框提交时使用），
   // 不能落到 anthropic 默认值（会被当 CC base 拼出错误端点）。
   if (props.account && isMultiProtocolApiKeyPlatform(props.account.platform)) {
@@ -4651,6 +4684,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
+  seedanceProfileForm.value = newAccount.platform === 'seedance'
+    ? readSeedanceProfile(newAccount.credentials as Record<string, unknown> | undefined)
+    : emptySeedanceProfileForm()
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -4675,6 +4711,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     if (newAccount.type === 'apikey') {
       openAIResponsesMode.value = normalizeOpenAIResponsesMode(extra?.openai_responses_mode)
       openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
+        newAccount.credentials as Record<string, unknown> | undefined
+      )
+      seedanceProfileForm.value = readSeedanceProfile(
         newAccount.credentials as Record<string, unknown> | undefined
       )
       if (!openAITextGenerationCapabilityEnabled.value) {
@@ -4921,6 +4960,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? 'https://api.x.ai/v1'
             : newAccount.platform === 'typesafe'
               ? 'https://api.typesafe.ai'
+            : newAccount.platform === 'seedance'
+              ? ''
             : isMultiProtocolApiKeyPlatform(newAccount.platform)
               ? defaultCNBaseUrl(newAccount.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
               : 'https://api.anthropic.com'
@@ -5733,8 +5774,23 @@ const handleSubmit = async () => {
       } else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
       }
+      if (props.account.platform === 'seedance' && !editBaseUrl.value.trim()) {
+        appStore.showError(t('admin.accounts.seedance.errors.baseUrlRequired'))
+        return
+      }
+      if (seedanceProfileActive.value) {
+        const seedanceError = validateSeedanceProfile(seedanceProfileForm.value)
+        if (seedanceError) {
+          appStore.showError(t(seedanceError))
+          return
+        }
+      }
+      if (props.account.platform === 'seedance') {
+        applySeedanceProfile(newCredentials, true, seedanceProfileForm.value)
+      }
       if (props.account.platform === 'openai') {
         applyOpenAIEndpointCapabilities(newCredentials)
+        applySeedanceProfile(newCredentials, seedanceCapabilityEnabled.value, seedanceProfileForm.value)
         const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
         if (compactModelMapping) {
           newCredentials.compact_model_mapping = compactModelMapping
