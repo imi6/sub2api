@@ -2,6 +2,8 @@ name: Security Scan
 
 on:
   push:
+    # local/billing is built by billing-build.yml; skip upstream CI there.
+    branches-ignore: [local/billing]
   pull_request:
   schedule:
     - cron: '0 3 * * 1'
