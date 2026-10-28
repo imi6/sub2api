@@ -55,6 +55,11 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 		if err != nil {
 			return nil, err
 		}
+		body, err = convertSeedanceRequest(profile.RequestFormat, body, model)
+		if err != nil {
+			writeGrokMediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return nil, err
+		}
 		method = http.MethodPost
 	case SeedanceEndpointDelete:
 		method = http.MethodDelete
