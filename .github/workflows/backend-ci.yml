@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    # local/billing is built by billing-build.yml; skip upstream CI there.
+    branches-ignore: [local/billing]
   pull_request:
 
 permissions:
