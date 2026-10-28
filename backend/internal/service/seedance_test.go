@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -97,6 +98,95 @@ func TestSeedanceValidationAndCapability(t *testing.T) {
 	a.Type = AccountTypeAPIKey
 	delete(a.Credentials, "openai_capabilities")
 	require.False(t, a.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilitySeedance))
+}
+
+func seedanceOpenAIVideosTestAccount() *Account {
+	return &Account{ID: 28, Platform: PlatformSeedance, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key": "channel-secret", "base_url": "https://upstream.example",
+		SeedanceProfileCredentialKey: map[string]any{"preset": SeedancePresetOpenAIVideos},
+	}}
+}
+
+func seedanceVideoResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode:    status,
+		Header:        http.Header{"Content-Type": []string{"video/mp4"}},
+		Body:          io.NopCloser(strings.NewReader(body)),
+		ContentLength: int64(len(body)),
+	}
+}
+
+func seedanceRedirectResponse(location string) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusFound,
+		Header:     http.Header{"Location": []string{location}},
+		Body:       io.NopCloser(strings.NewReader("")),
+	}
+}
+
+func TestSeedanceContentStreamsDirectVideo(t *testing.T) {
+	upstream := &grokMediaContentUpstreamStub{responses: []*http.Response{seedanceVideoResponse(http.StatusOK, "mp4-bytes")}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c, w := grokMediaContentTestContext(http.MethodGet, "/v1/videos/task-1/content", nil)
+	_, err := svc.ForwardSeedance(context.Background(), c, seedanceOpenAIVideosTestAccount(), SeedanceEndpointContent, "seedance:task-1", nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "mp4-bytes", w.Body.String())
+	require.Equal(t, "video/mp4", w.Header().Get("Content-Type"))
+	require.Len(t, upstream.requests, 1)
+	require.Equal(t, "https://upstream.example/v1/videos/task-1/content", upstream.requests[0].URL.String())
+}
+
+func TestSeedanceContentFollowsRedirectWithoutCredential(t *testing.T) {
+	upstream := &grokMediaContentUpstreamStub{responses: []*http.Response{
+		seedanceRedirectResponse("/files/task-1"),
+		seedanceRedirectResponse("https://cdn.example/signed/video.mp4?sig=abc"),
+		seedanceVideoResponse(http.StatusPartialContent, "part"),
+	}}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c, w := grokMediaContentTestContext(http.MethodGet, "/v1/videos/task-1/content", map[string]string{"Range": "bytes=0-3"})
+	_, err := svc.ForwardSeedance(context.Background(), c, seedanceOpenAIVideosTestAccount(), SeedanceEndpointContent, "seedance:task-1", nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusPartialContent, w.Code)
+	require.Equal(t, "part", w.Body.String())
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, "Bearer channel-secret", upstream.requests[0].Header.Get("Authorization"))
+	require.Equal(t, "https://upstream.example/files/task-1", upstream.requests[1].URL.String())
+	require.Equal(t, "https://cdn.example/signed/video.mp4?sig=abc", upstream.requests[2].URL.String())
+	for _, hop := range upstream.requests[1:] {
+		require.Empty(t, hop.Header.Get("Authorization"), "redirect hops must not carry the channel API key")
+		require.Equal(t, "bytes=0-3", hop.Header.Get("Range"))
+		require.True(t, HTTPUpstreamPublicHostsOnly(hop.Context()))
+		require.True(t, HTTPUpstreamRedirectsDisabled(hop.Context()))
+	}
+}
+
+func TestSeedanceContentRejectsUnsafeRedirects(t *testing.T) {
+	for _, location := range []string{"", "http://127.0.0.1/video.mp4", "http://localhost/video.mp4", "http://10.0.0.5/video.mp4", "file:///etc/passwd"} {
+		t.Run(location, func(t *testing.T) {
+			upstream := &grokMediaContentUpstreamStub{responses: []*http.Response{seedanceRedirectResponse(location)}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+			c, w := grokMediaContentTestContext(http.MethodGet, "/v1/videos/task-1/content", nil)
+			_, err := svc.ForwardSeedance(context.Background(), c, seedanceOpenAIVideosTestAccount(), SeedanceEndpointContent, "seedance:task-1", nil)
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadGateway, w.Code)
+			require.Len(t, upstream.requests, 1)
+		})
+	}
+}
+
+func TestSeedanceContentStopsAfterMaxRedirects(t *testing.T) {
+	responses := make([]*http.Response, 0, seedanceContentMaxRedirects+1)
+	for i := 0; i <= seedanceContentMaxRedirects; i++ {
+		responses = append(responses, seedanceRedirectResponse("https://cdn.example/loop"))
+	}
+	upstream := &grokMediaContentUpstreamStub{responses: responses}
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	c, w := grokMediaContentTestContext(http.MethodGet, "/v1/videos/task-1/content", nil)
+	_, err := svc.ForwardSeedance(context.Background(), c, seedanceOpenAIVideosTestAccount(), SeedanceEndpointContent, "seedance:task-1", nil)
+	require.Error(t, err)
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	require.Len(t, upstream.requests, seedanceContentMaxRedirects+1)
 }
 
 func TestSeedancePreservesUpstreamErrorsWithoutRetry(t *testing.T) {
