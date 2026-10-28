@@ -37,6 +37,16 @@ func TestFilterSchedulerCredentialsKeepsGeminiExplicitCacheKeys(t *testing.T) {
 	require.NotContains(t, filtered, "service_account_json")
 }
 
+func TestFilterSchedulerCredentialsKeepsSeedanceProfile(t *testing.T) {
+	filtered := filterSchedulerCredentials(map[string]any{
+		"api_key":                            "k",
+		service.SeedanceProfileCredentialKey: map[string]any{"preset": service.SeedancePresetOpenAIVideos},
+	})
+
+	account := service.Account{Platform: service.PlatformSeedance, Credentials: filtered}
+	require.Equal(t, service.SeedancePresetOpenAIVideos, account.SeedanceProtocol())
+}
+
 func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	account := service.Account{
 		ID:       24,
