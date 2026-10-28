@@ -175,6 +175,7 @@ export default {
     affiliateRebateRecords: '返利记录',
     affiliateTransferRecords: '提取记录',
     profile: '个人资料',
+    videoGuide: '对接文档',
     users: '用户管理',
     groups: '分组管理',
     channels: '渠道管理',

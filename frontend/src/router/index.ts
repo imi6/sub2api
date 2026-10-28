@@ -289,6 +289,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/video-guide',
+    name: 'VideoGuide',
+    alias: '/docs/video',
+    component: () => import('@/views/user/VideoGuideView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'API Docs',
+      titleKey: 'videoGuide.title',
+      descriptionKey: 'videoGuide.description'
+    }
+  },
+  {
     path: '/subscriptions',
     name: 'Subscriptions',
     component: () => import('@/views/user/SubscriptionsView.vue'),
