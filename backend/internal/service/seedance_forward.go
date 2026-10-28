@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -96,6 +98,12 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if endpoint == SeedanceEndpointContent {
+		final, err := s.followSeedanceContentRedirects(ctx, c, resp, req.URL, proxy, account)
+		if err != nil {
+			return nil, err
+		}
+		// The deferred close above reads resp, so it closes the final hop.
+		resp = final
 		return s.finishSeedanceContent(c, resp, taskID, started)
 	}
 	responseBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
@@ -172,10 +180,54 @@ func applySeedanceStatusBilling(profile SeedanceProfile, statusBody []byte, resu
 
 // finishSeedanceContent streams the rendered file. Downloads never bill:
 // completion is observed (and claimed once) on status polling.
+const seedanceContentMaxRedirects = 5
+
+// followSeedanceContentRedirects follows the download redirects some channels
+// return instead of the file (e.g. a 302 to a signed CDN URL). The Location
+// comes from the upstream, so hops drop the channel API key and must resolve
+// to public hosts. A redirect that cannot be followed is returned as-is and
+// rejected by finishSeedanceContent.
+func (s *OpenAIGatewayService) followSeedanceContentRedirects(ctx context.Context, c *gin.Context, resp *http.Response, current *url.URL, proxy string, account *Account) (*http.Response, error) {
+	for hops := 0; isSeedanceContentRedirect(resp.StatusCode) && hops < seedanceContentMaxRedirects; hops++ {
+		location := strings.TrimSpace(resp.Header.Get("Location"))
+		if location == "" {
+			return resp, nil
+		}
+		next, err := current.Parse(location)
+		if err != nil || (next.Scheme != "https" && next.Scheme != "http") || next.Hostname() == "" || urlvalidator.IsBlockedHost(next.Hostname()) {
+			return resp, nil
+		}
+		req, err := http.NewRequestWithContext(WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamPublicHostsOnly(ctx)), http.MethodGet, next.String(), nil)
+		if err != nil {
+			return resp, nil
+		}
+		req.Header.Set("Accept", "*/*")
+		if rangeHeader := strings.TrimSpace(c.GetHeader("Range")); rangeHeader != "" {
+			req.Header.Set("Range", rangeHeader)
+		}
+		hopResp, err := s.httpUpstream.Do(req, proxy, account.ID, account.Concurrency)
+		if err != nil {
+			writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Seedance content redirect download failed")
+			return nil, fmt.Errorf("seedance content redirect: %w", err)
+		}
+		_ = resp.Body.Close()
+		resp, current = hopResp, next
+	}
+	return resp, nil
+}
+
+func isSeedanceContentRedirect(status int) bool {
+	switch status {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return true
+	}
+	return false
+}
+
 func (s *OpenAIGatewayService) finishSeedanceContent(c *gin.Context, resp *http.Response, taskID string, started time.Time) (*OpenAIForwardResult, error) {
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Seedance content redirect is not allowed")
-		return nil, fmt.Errorf("seedance content redirect is not allowed")
+		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Seedance content redirect could not be followed")
+		return nil, fmt.Errorf("seedance content redirect could not be followed (status %d)", resp.StatusCode)
 	}
 	if resp.StatusCode >= 400 && resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
 		body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
