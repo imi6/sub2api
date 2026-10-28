@@ -35,6 +35,12 @@ const billingOptions = computed(() => [
   { value: 'tokens', label: t('admin.accounts.seedance.billing.tokens') }
 ])
 
+const requestFormatOptions = computed(() => [
+  { value: '', label: t('admin.accounts.seedance.requestFormats.passthrough') },
+  { value: 'sd25', label: t('admin.accounts.seedance.requestFormats.sd25') },
+  { value: 'opaigc', label: t('admin.accounts.seedance.requestFormats.opaigc') }
+])
+
 const effectiveBillingMode = computed(() => profile.value.billing_mode || defaults.value.billing_mode)
 
 // Usage tokens only matter for token billing; hide it otherwise to reduce noise.
@@ -57,6 +63,7 @@ const resetOverrides = () => {
     profile.value[field] = ''
   }
   profile.value.billing_mode = ''
+  profile.value.request_format = ''
 }
 </script>
 
@@ -70,6 +77,12 @@ const resetOverrides = () => {
           ? t('admin.accounts.seedance.presetOpenAIVideosDesc')
           : t('admin.accounts.seedance.presetArkDesc') }}
       </p>
+    </div>
+
+    <div>
+      <label class="input-label">{{ t('admin.accounts.seedance.requestFormat') }}</label>
+      <Select v-model="profile.request_format" :options="requestFormatOptions" data-testid="seedance-profile-request-format" />
+      <p class="input-hint">{{ t('admin.accounts.seedance.requestFormatHint') }}</p>
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
