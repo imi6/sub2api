@@ -45,6 +45,8 @@ type SeedanceProfile struct {
 	ResolutionField        string   `json:"resolution_field"`
 	RequestDurationField   string   `json:"request_duration_field"`
 	RequestResolutionField string   `json:"request_resolution_field"`
+	// RequestFormat rewrites the client create body for the channel; empty passes it through.
+	RequestFormat string `json:"request_format"`
 }
 
 func seedancePresetProfile(preset string) SeedanceProfile {
@@ -119,6 +121,10 @@ func (a *Account) ResolveSeedanceProfile() (SeedanceProfile, error) {
 	pick(&profile.ResolutionField, override.ResolutionField)
 	pick(&profile.RequestDurationField, override.RequestDurationField)
 	pick(&profile.RequestResolutionField, override.RequestResolutionField)
+	profile.RequestFormat = strings.ToLower(strings.TrimSpace(override.RequestFormat))
+	if !isSeedanceRequestFormat(profile.RequestFormat) {
+		return SeedanceProfile{}, fmt.Errorf("unsupported seedance request_format %q", override.RequestFormat)
+	}
 	if mode := strings.ToLower(strings.TrimSpace(override.BillingMode)); mode != "" {
 		if mode != SeedanceBillingTokens && mode != SeedanceBillingVideo {
 			return SeedanceProfile{}, fmt.Errorf("unsupported seedance billing_mode %q", override.BillingMode)

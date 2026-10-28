@@ -775,6 +775,13 @@ export default {
         },
         pathsHint: "Paths are appended to the Base URL and must start with /. Status, download and cancel paths must contain {'{'}task_id{'}'}. A version prefix already present in the Base URL (such as /v1) is not duplicated.",
         notSupported: 'Not provided (unsupported by this channel)',
+        requestFormat: 'Request format',
+        requestFormatHint: 'Users always send the fields from the API docs page (duration, ratio, resolution, first_frame, last_frame, reference_images, ...). Choose which upstream format to convert them to. Ark content-array requests are not converted.',
+        requestFormats: {
+          passthrough: 'Pass through (no conversion)',
+          sd25: 'sd25.app (seconds / aspect_ratio / reference_*)',
+          opaigc: 'opaigc (duration / ratio, media as content + role)',
+        },
         billingMode: 'Billing',
         billingDefault: 'Preset default ({mode})',
         billing: {

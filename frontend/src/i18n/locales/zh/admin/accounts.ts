@@ -884,6 +884,13 @@ export default {
         },
         pathsHint: "路径拼接在 Base URL 之后，必须以 / 开头；查询、下载、取消路径需包含 {'{'}task_id{'}'}。若 Base URL 已带 /v1 等前缀，会自动去重。",
         notSupported: '未提供（该渠道不支持）',
+        requestFormat: '请求格式',
+        requestFormatHint: '用户统一按「对接文档」的字段提交（duration、ratio、resolution、first_frame、last_frame、reference_images 等），这里选择转换成哪个上游的格式。方舟 content 数组格式的请求不转换。',
+        requestFormats: {
+          passthrough: '原样转发（不转换）',
+          sd25: 'sd25.app（seconds / aspect_ratio / reference_*）',
+          opaigc: 'opaigc（duration / ratio，带素材时转为 content + role）',
+        },
         billingMode: '计费方式',
         billingDefault: '跟随预设（{mode}）',
         billing: {

@@ -69,6 +69,18 @@
             </tbody>
           </table>
         </div>
+        <h3 class="mt-6 font-semibold text-gray-900 dark:text-white">{{ t('videoGuide.params.imageExampleTitle') }}</h3>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">{{ t('videoGuide.params.imageExampleDesc') }}</p>
+        <div class="relative mt-3">
+          <button
+            type="button"
+            class="absolute right-2 top-2 rounded bg-gray-700 px-2 py-1 text-xs text-gray-100 hover:bg-gray-600"
+            @click="copyToClipboard(imageExampleCode, t('videoGuide.copied'))"
+          >
+            {{ t('videoGuide.copy') }}
+          </button>
+          <pre class="overflow-x-auto rounded-lg bg-gray-900 p-4 pr-16 text-xs leading-relaxed text-gray-100"><code>{{ imageExampleCode }}</code></pre>
+        </div>
       </div>
 
       <div class="card p-6">
@@ -159,7 +171,26 @@ const paramRows = [
   { key: 'duration', field: 'duration', required: false },
   { key: 'ratio', field: 'ratio', required: false },
   { key: 'resolution', field: 'resolution', required: false },
+  { key: 'firstFrame', field: 'first_frame', required: false },
+  { key: 'lastFrame', field: 'last_frame', required: false },
+  { key: 'referenceImages', field: 'reference_images', required: false },
+  { key: 'referenceVideos', field: 'reference_videos', required: false },
+  { key: 'referenceAudios', field: 'reference_audios', required: false },
 ]
+
+const imageExampleCode = computed(() => `curl -X POST "${baseUrl.value}/v1/videos" \\
+  -H "Authorization: Bearer sk-xxx" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${exampleModel}",
+    "prompt": "The girl in the picture turns around and smiles",
+    "duration": 5,
+    "ratio": "16:9",
+    "reference_images": [
+      { "image_url": "https://example.com/ref-1.png" },
+      { "image_url": "https://example.com/ref-2.png" }
+    ]
+  }'`)
 
 const statusRows = [
   { key: 'running', values: 'queued / processing' },
