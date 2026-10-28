@@ -15,8 +15,9 @@ const imageGenerationDefaultPlatforms = new Set(["antigravity", "gemini", "grok"
 export const defaultAllowImageGenerationForPlatform = (platform: string): boolean =>
   imageGenerationDefaultPlatforms.has(platform);
 
+// Seedance 渠道按秒 × 分辨率计费，单价没有官方默认值，需管理员在分组上配置。
 export const supportsVideoPricingPlatform = (platform: string): boolean =>
-  platform === "grok";
+  platform === "grok" || platform === "seedance";
 
 export const imagePricingI18nKey = (_platform: string, key: string): string =>
   `admin.groups.imagePricing.${key}`;

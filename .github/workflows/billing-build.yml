@@ -1,0 +1,115 @@
+name: Billing Build
+
+# Builds a single self-contained binary (frontend embedded) from local/billing
+# and publishes it to the rolling "billing-latest" pre-release, so a server only
+# needs to download the archive and replace the binary.
+#
+# Stable download URL (linux/amd64 only):
+#   https://github.com/<owner>/<repo>/releases/download/billing-latest/sub2api-zzs-linux-amd64.tar.gz
+
+on:
+  push:
+    branches:
+      - local/billing
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: billing-build-${{ github.repository }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: billing-latest
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      # Outputs to backend/internal/web/dist (vite outDir), embedded by -tags=embed.
+      - run: pnpm run build
+        working-directory: frontend
+      - uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: backend/internal/web/dist/
+          retention-days: 1
+
+  build-binary:
+    needs: build-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: frontend-dist
+          path: backend/internal/web/dist/
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Build
+        working-directory: backend
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          version="$(tr -d '[:space:]' < cmd/server/VERSION)-billing.${short_sha}"
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          go build -tags=embed -trimpath \
+            -ldflags="-s -w -X main.Version=${version} -X main.Commit=${GITHUB_SHA} -X main.Date=${build_date} -X main.BuildType=release" \
+            -o ../dist/sub2api-zzs ./cmd/server
+          echo "${version}" > ../dist/VERSION
+      - name: Package
+        run: |
+          # resources/ holds the pricing fallback read from ./resources at runtime.
+          cp -r backend/resources dist/resources
+          archive="sub2api-zzs-linux-amd64.tar.gz"
+          tar -C dist -czf "${archive}" sub2api-zzs VERSION resources
+          sha256sum "${archive}" > "${archive}.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-linux-amd64
+          path: sub2api-zzs-linux-amd64.tar.gz*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build-binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: binary-linux-amd64
+          path: out
+      - name: Replace rolling pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # Recreate so the tag always points at the commit that was built.
+          gh release delete "${RELEASE_TAG}" --yes --cleanup-tag || true
+          gh release create "${RELEASE_TAG}" out/* \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --title "Billing build ${GITHUB_SHA::7}" \
+            --notes "Automated build of local/billing at ${GITHUB_SHA}."
