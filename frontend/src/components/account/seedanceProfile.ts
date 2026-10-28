@@ -4,6 +4,8 @@
 
 export type SeedancePreset = 'ark' | 'openai_videos'
 export type SeedanceBillingMode = 'tokens' | 'video'
+// Rewrites the documented client body for the channel; '' passes it through.
+export type SeedanceRequestFormat = '' | 'sd25' | 'opaigc'
 
 export interface SeedanceProfileForm {
   preset: SeedancePreset
@@ -20,9 +22,10 @@ export interface SeedanceProfileForm {
   resolution_field: string
   request_duration_field: string
   request_resolution_field: string
+  request_format: SeedanceRequestFormat
 }
 
-export type SeedanceTextField = Exclude<keyof SeedanceProfileForm, 'preset' | 'billing_mode'>
+export type SeedanceTextField = Exclude<keyof SeedanceProfileForm, 'preset' | 'billing_mode' | 'request_format'>
 
 export const SEEDANCE_PATH_FIELDS: SeedanceTextField[] = [
   'create_path',
@@ -90,7 +93,8 @@ export const emptySeedanceProfileForm = (preset: SeedancePreset = 'ark'): Seedan
   duration_field: '',
   resolution_field: '',
   request_duration_field: '',
-  request_resolution_field: ''
+  request_resolution_field: '',
+  request_format: ''
 })
 
 const asString = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
@@ -112,6 +116,9 @@ export const readSeedanceProfile = (credentials?: Record<string, unknown>): Seed
   if (source.billing_mode === 'tokens' || source.billing_mode === 'video') {
     form.billing_mode = source.billing_mode
   }
+  if (source.request_format === 'sd25' || source.request_format === 'opaigc') {
+    form.request_format = source.request_format
+  }
   return form
 }
 
@@ -130,6 +137,7 @@ export const buildSeedanceProfile = (form: SeedanceProfileForm): Record<string, 
     .filter(Boolean)
   if (statuses.length > 0) profile.success_statuses = statuses
   if (form.billing_mode) profile.billing_mode = form.billing_mode
+  if (form.request_format) profile.request_format = form.request_format
   return profile
 }
 
