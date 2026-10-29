@@ -19,6 +19,38 @@
         </div>
       </div>
 
+      <!-- Shop Card Banner -->
+      <a
+        :href="shopUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="block rounded-2xl border border-teal-300 bg-gradient-to-r from-emerald-50 to-indigo-50 p-4 transition hover:shadow-md dark:border-teal-700 dark:from-dark-800 dark:to-dark-800"
+      >
+        <div class="flex items-center gap-4">
+          <div
+            class="flex w-28 flex-shrink-0 flex-col items-center justify-center gap-2 rounded-xl bg-teal-500 px-3 py-3 text-white"
+          >
+            <span class="flex h-9 w-full items-center justify-center rounded-lg bg-white text-xl font-bold text-teal-600">
+              {{ t('redeem.shopBadgeIcon') }}
+            </span>
+            <span class="text-sm font-semibold">{{ t('redeem.shopBadgeLabel') }}</span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="text-base font-bold text-gray-900 dark:text-white sm:text-lg">
+              {{ t('redeem.shopTitle') }}
+            </p>
+            <p class="mt-1 text-sm text-gray-600 dark:text-dark-300">
+              {{ t('redeem.shopDescription') }}
+            </p>
+            <p
+              class="mt-2 inline-block rounded-full border border-teal-300 bg-white/70 px-3 py-0.5 text-xs text-teal-700 dark:border-teal-700 dark:bg-dark-900/50 dark:text-teal-300"
+            >
+              {{ t('redeem.shopLinkLabel') }}{{ shopUrlText }} {{ t('redeem.shopLinkNote') }}
+            </p>
+          </div>
+        </div>
+      </a>
+
       <!-- Redeem Form -->
       <div class="card">
         <div class="p-6">
@@ -382,6 +414,9 @@ const appStore = useAppStore()
 const subscriptionStore = useSubscriptionStore()
 
 const user = computed(() => authStore.user)
+
+const shopUrl = 'https://fk.zzshu.cc'
+const shopUrlText = 'fk.zzshu.cc'
 
 const redeemCode = ref('')
 const submitting = ref(false)
