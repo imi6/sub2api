@@ -98,6 +98,9 @@ describe('PlazaModelPricingTable', () => {
     })
     expect(wrapper.text()).toContain('720p')
     expect(wrapper.text()).toContain('$1.00')
+    expect(wrapper.text()).toContain('modelPlaza.table.perSecond')
+    expect(wrapper.text()).toContain('modelPlaza.table.perUnitSecond')
+    expect(wrapper.text()).not.toContain('modelPlaza.table.perRequest')
     wrapper.unmount()
   })
 
