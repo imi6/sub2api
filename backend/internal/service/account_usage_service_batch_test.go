@@ -127,6 +127,9 @@ func (r *usageBatchLogRepoStub) GetModelStatsAggregated(context.Context, string,
 func (r *usageBatchLogRepoStub) GetDailyStatsAggregated(context.Context, int64, time.Time, time.Time) ([]map[string]any, error) {
 	return nil, nil
 }
+func (r *usageBatchLogRepoStub) MarkVideoUsageRefunded(context.Context, string, int64) (float64, error) {
+	return 0, nil
+}
 
 func TestAccountUsageService_GetUsageBatch_BestEffortByAccount(t *testing.T) {
 	t.Parallel()

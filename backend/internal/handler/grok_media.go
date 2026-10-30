@@ -522,11 +522,24 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					)
 				}
 			}
+			// Video channels (billing_mode=video) charge at submission time.
+			// The claim slot is pre-marked here so status polls skip re-charging.
+			if result.SeedanceVideoBilling {
+				if billResult := prepareSeedanceCreateBilling(requestCtx, h, apiKey, subject, result.ResponseID, result, videoCreateStartedAt); billResult != nil {
+					recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, result.ResponseID)
+				}
+			}
 		}
 		// Status poll OR content download can observe official done+video.url.
 		// Both paths share the same claim key so the customer is charged once.
 		if endpoint == service.SeedanceEndpointStatus {
-			if billResult := prepareSeedanceCompletionBilling(requestCtx, h, apiKey, subject, requestID, result); billResult != nil {
+			if result.SeedanceFailure {
+				// Terminal failure: refund any prepaid charge for this task.
+				stableID := service.StableGrokVideoBillingRequestID(requestID)
+				quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+				refundCtx := context.WithoutCancel(requestCtx)
+				go h.gatewayService.RefundVideoUsage(refundCtx, stableID, subject.UserID, apiKey.ID, quotaPlatform)
+			} else if billResult := prepareSeedanceCompletionBilling(requestCtx, h, apiKey, subject, requestID, result); billResult != nil {
 				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, requestID)
 			}
 		} else if endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent {
