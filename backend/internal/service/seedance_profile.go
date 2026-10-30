@@ -45,6 +45,9 @@ type SeedanceProfile struct {
 	ResolutionField        string   `json:"resolution_field"`
 	RequestDurationField   string   `json:"request_duration_field"`
 	RequestResolutionField string   `json:"request_resolution_field"`
+	// FailureStatuses lists terminal task statuses that indicate a non-recoverable
+	// failure. When matched on a status poll, any prepaid charge is refunded.
+	FailureStatuses []string `json:"failure_statuses"`
 	// RequestFormat rewrites the client create body for the channel; empty passes it through.
 	RequestFormat string `json:"request_format"`
 }
@@ -60,6 +63,7 @@ func seedancePresetProfile(preset string) SeedanceProfile {
 			TaskIDField:            "id",
 			StatusField:            "status",
 			SuccessStatuses:        []string{"completed"},
+			FailureStatuses:        []string{"failed", "cancelled"},
 			BillingMode:            SeedanceBillingVideo,
 			DurationField:          "seconds,duration",
 			ResolutionField:        "resolution,size",
@@ -73,6 +77,7 @@ func seedancePresetProfile(preset string) SeedanceProfile {
 			TaskIDField:            "id",
 			StatusField:            "status",
 			SuccessStatuses:        []string{"succeeded"},
+			FailureStatuses:        []string{"failed", "expired", "cancelled"},
 			BillingMode:            SeedanceBillingTokens,
 			UsageTokensField:       "usage.completion_tokens",
 			DurationField:          "duration",
@@ -134,6 +139,9 @@ func (a *Account) ResolveSeedanceProfile() (SeedanceProfile, error) {
 	if statuses := normalizeSeedanceStatuses(override.SuccessStatuses); len(statuses) > 0 {
 		profile.SuccessStatuses = statuses
 	}
+	if statuses := normalizeSeedanceStatuses(override.FailureStatuses); len(statuses) > 0 {
+		profile.FailureStatuses = statuses
+	}
 	for _, path := range []string{profile.CreatePath, profile.StatusPath, profile.ContentPath, profile.DeletePath} {
 		if path != "" && !strings.HasPrefix(path, "/") {
 			return SeedanceProfile{}, fmt.Errorf("seedance path %q must start with /", path)
@@ -165,6 +173,19 @@ func (p SeedanceProfile) IsSuccessStatus(status string) bool {
 		return false
 	}
 	for _, s := range p.SuccessStatuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
+}
+
+func (p SeedanceProfile) IsFailureStatus(status string) bool {
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status == "" {
+		return false
+	}
+	for _, s := range p.FailureStatuses {
 		if s == status {
 			return true
 		}

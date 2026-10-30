@@ -133,10 +133,19 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 		// Create-time snapshot for deferred video billing (status may omit them).
 		result.VideoResolution = seedanceResolution(seedanceLookup(body, profile.RequestResolutionField).String())
 		result.VideoDurationSeconds = seedanceDurationSeconds(seedanceLookup(body, profile.RequestDurationField))
+		if profile.BillingMode == SeedanceBillingVideo {
+			// Video channels charge at submit time; flag so the handler records
+			// usage immediately and the claim key is pre-marked as billed.
+			result.SeedanceVideoBilling = true
+			result.VideoCount = 1
+		}
 	case SeedanceEndpointStatus:
 		result.ResponseID = taskID
 		result.UpstreamModel = gjson.GetBytes(responseBody, "model").String()
 		applySeedanceStatusBilling(profile, responseBody, result)
+		if profile.IsFailureStatus(seedanceLookup(responseBody, profile.StatusField).String()) {
+			result.SeedanceFailure = true
+		}
 	}
 	writeGrokMediaResponse(c, resp, responseBody, s.responseHeaderFilter)
 	return result, nil

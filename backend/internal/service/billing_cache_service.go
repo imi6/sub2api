@@ -733,6 +733,26 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 	}
 }
 
+// DecrementUserPlatformQuotaUsage reverses a portion of platform-quota usage.
+// amount must be positive; the cache counter is decremented by that amount.
+func (s *BillingCacheService) DecrementUserPlatformQuotaUsage(userID int64, platform string, amount float64) {
+	if s.cache == nil {
+		return
+	}
+	if platform == "" || amount <= 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+	defer cancel()
+	ttl := time.Duration(s.cfg.Billing.UserPlatformQuotaCacheTTLSeconds) * time.Second
+	markDirty := s.cfg.Database.UserPlatformQuotaFlusherEnabled
+	if err := s.cache.IncrUserPlatformQuotaUsageCache(ctx, userID, platform, -amount, ttl, markDirty); err != nil {
+		logger.LegacyPrintf("service.billing_cache",
+			"ALERT: decr user platform quota cache failed user=%d platform=%s amount=%f: %v",
+			userID, platform, amount, err)
+	}
+}
+
 // ============================================
 // 统一检查方法
 // ============================================
