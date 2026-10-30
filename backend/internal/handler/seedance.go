@@ -186,3 +186,33 @@ func prepareSeedanceCompletionBilling(ctx context.Context, h *OpenAIGatewayHandl
 	}
 	return &merged
 }
+
+// prepareSeedanceCreateBilling builds a billing result for immediate charging
+// at Seedance video create time. The claim slot is pre-marked as billed so
+// status polls do not double-charge. Returns nil if result carries no billable
+// video units or the pending billing cannot be stored.
+func prepareSeedanceCreateBilling(
+	ctx context.Context,
+	h *OpenAIGatewayHandler,
+	key *service.APIKey,
+	subject middleware.AuthSubject,
+	taskID string,
+	result *service.OpenAIForwardResult,
+	videoCreateStartedAt string,
+) *service.OpenAIForwardResult {
+	if result == nil || !result.SeedanceVideoBilling || result.VideoCount <= 0 {
+		return nil
+	}
+	// Claim billing immediately so status polls see the slot already taken.
+	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskID, subject.UserID, key.ID)
+	if err != nil || !claimed {
+		return nil
+	}
+	merged := *result
+	merged.RequestID = service.StableGrokVideoBillingRequestID(taskID)
+	merged.ResponseID = taskID
+	merged.VideoCount = 1
+	merged.Usage = service.OpenAIUsage{}
+	merged.Duration = service.GrokVideoE2EDuration(videoCreateStartedAt, time.Now())
+	return &merged
+}

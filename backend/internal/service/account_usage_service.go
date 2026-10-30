@@ -31,6 +31,11 @@ type UsageLogRepository interface {
 	GetByID(ctx context.Context, id int64) (*UsageLog, error)
 	Delete(ctx context.Context, id int64) error
 
+	// MarkVideoUsageRefunded zeroes actual_cost/total_cost on a prepaid video usage
+	// row and records the original amount in refunded_amount. Returns the refunded
+	// amount (0 if already refunded or not found). Safe to call multiple times.
+	MarkVideoUsageRefunded(ctx context.Context, requestID string, apiKeyID int64) (float64, error)
+
 	ListByUser(ctx context.Context, userID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error)
 	ListByAPIKey(ctx context.Context, apiKeyID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error)
 	ListByAccount(ctx context.Context, accountID int64, params pagination.PaginationParams) ([]UsageLog, *pagination.PaginationResult, error)

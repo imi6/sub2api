@@ -277,7 +277,14 @@ type OpenAIForwardResult struct {
 	Duration              time.Duration
 	FirstTokenMs          *int
 	ClientDisconnect      bool
-	ImageCount            int
+	// SeedanceFailure is set when a Seedance status poll returns a terminal failure
+	// status. The handler uses this to trigger a refund of any prepaid charge.
+	SeedanceFailure bool
+	// SeedanceVideoBilling is set on a successful Seedance create when the channel
+	// uses video billing mode. The handler charges immediately and claims the billing
+	// slot so subsequent success status polls do not double-charge.
+	SeedanceVideoBilling bool
+	ImageCount           int
 	// ImageEndpoint 标记请求来自专用图片端点；分组 image_count_billing 开关
 	// 只对这类请求生效，混合 Responses/Chat/WS 请求仍按 token 计费。
 	ImageEndpoint      bool
