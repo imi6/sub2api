@@ -894,6 +894,7 @@ export default {
           passthrough: '原样转发（不转换）',
           sd25: 'sd25.app（seconds / aspect_ratio / reference_*）',
           opaigc: 'opaigc（duration / ratio，带素材时转为 content + role）',
+          yingxu: '映序（references 数组，删除 resolution）',
         },
         billingMode: '计费方式',
         billingDefault: '跟随预设（{mode}）',

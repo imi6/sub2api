@@ -785,6 +785,7 @@ export default {
           passthrough: 'Pass through (no conversion)',
           sd25: 'sd25.app (seconds / aspect_ratio / reference_*)',
           opaigc: 'opaigc (duration / ratio, media as content + role)',
+          yingxu: '映序 / Yingxu (references array, resolution dropped)',
         },
         billingMode: 'Billing',
         billingDefault: 'Preset default ({mode})',
