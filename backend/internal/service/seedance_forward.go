@@ -83,6 +83,12 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 	if method == http.MethodPost {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if endpoint == SeedanceEndpointCreate && profile.SendIdempotencyKey {
+		// Use the stable billing request ID as the idempotency key so retries
+		// for the same task always send the same value (8-128 chars, required by
+		// channels such as 映序).
+		req.Header.Set("Idempotency-Key", StableGrokVideoBillingRequestID(taskID))
+	}
 	if endpoint == SeedanceEndpointContent {
 		req.Header.Set("Accept", "*/*")
 		if rangeHeader := strings.TrimSpace(c.GetHeader("Range")); rangeHeader != "" {

@@ -129,3 +129,72 @@ func TestResolveSeedanceProfileRequestFormat(t *testing.T) {
 	_, err = account.ResolveSeedanceProfile()
 	require.Error(t, err)
 }
+
+func TestConvertSeedanceRequestYingxuTextOnly(t *testing.T) {
+	body := `{"model":"seedance25-t2v-720p","prompt":"a cat","duration":5,"ratio":"9:16","resolution":"720p"}`
+	out, err := convertSeedanceRequest(SeedanceRequestFormatYingxu, []byte(body), "seedance25-t2v-720p")
+	require.NoError(t, err)
+	// resolution dropped; duration and ratio kept as-is
+	require.JSONEq(t, `{"model":"seedance25-t2v-720p","prompt":"a cat","duration":5,"ratio":"9:16"}`, string(out))
+}
+
+func TestConvertSeedanceRequestYingxuFrames(t *testing.T) {
+	body := `{"model":"seedance25-i2v-720p","prompt":"transition","duration":8,"ratio":"adaptive","first_frame":"https://example.com/f.jpg","last_frame":{"image_url":"https://example.com/l.jpg"}}`
+	out, err := convertSeedanceRequest(SeedanceRequestFormatYingxu, []byte(body), "seedance25-i2v-720p")
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model": "seedance25-i2v-720p",
+		"prompt": "transition",
+		"duration": 8,
+		"ratio": "adaptive",
+		"references": [
+			{"type": "image", "url": "https://example.com/f.jpg"},
+			{"type": "image", "url": "https://example.com/l.jpg"}
+		]
+	}`, string(out))
+}
+
+func TestConvertSeedanceRequestYingxuReferences(t *testing.T) {
+	body := `{
+		"model": "seedance20fast-r2v-720p",
+		"prompt": "style ref",
+		"duration": 8,
+		"ratio": "16:9",
+		"size": "1280x720",
+		"reference_images": ["https://example.com/a.jpg"],
+		"reference_videos": [{"video_url": "https://example.com/v.mp4"}],
+		"reference_audios": ["https://example.com/a.mp3"]
+	}`
+	out, err := convertSeedanceRequest(SeedanceRequestFormatYingxu, []byte(body), "seedance20fast-r2v-720p")
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"model": "seedance20fast-r2v-720p",
+		"prompt": "style ref",
+		"duration": 8,
+		"ratio": "16:9",
+		"references": [
+			{"type": "image", "url": "https://example.com/a.jpg"},
+			{"type": "video", "url": "https://example.com/v.mp4"},
+			{"type": "audio", "url": "https://example.com/a.mp3"}
+		]
+	}`, string(out))
+}
+
+func TestConvertSeedanceRequestYingxuKeepsArkContent(t *testing.T) {
+	body := []byte(`{"model":"m","content":[{"type":"text","text":"p"}]}`)
+	out, err := convertSeedanceRequest(SeedanceRequestFormatYingxu, body, "m")
+	require.NoError(t, err)
+	require.Equal(t, body, out)
+}
+
+func TestResolveSeedanceProfileSendIdempotencyKey(t *testing.T) {
+	account := &Account{Credentials: map[string]any{SeedanceProfileCredentialKey: map[string]any{
+		"preset":               "openai_videos",
+		"request_format":       "yingxu",
+		"send_idempotency_key": true,
+	}}}
+	profile, err := account.ResolveSeedanceProfile()
+	require.NoError(t, err)
+	require.Equal(t, SeedanceRequestFormatYingxu, profile.RequestFormat)
+	require.True(t, profile.SendIdempotencyKey)
+}
