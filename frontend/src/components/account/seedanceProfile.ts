@@ -5,7 +5,7 @@
 export type SeedancePreset = 'ark' | 'openai_videos'
 export type SeedanceBillingMode = 'tokens' | 'video'
 // Rewrites the documented client body for the channel; '' passes it through.
-export type SeedanceRequestFormat = '' | 'sd25' | 'opaigc'
+export type SeedanceRequestFormat = '' | 'sd25' | 'opaigc' | 'yingxu'
 
 export interface SeedanceProfileForm {
   preset: SeedancePreset
@@ -116,7 +116,7 @@ export const readSeedanceProfile = (credentials?: Record<string, unknown>): Seed
   if (source.billing_mode === 'tokens' || source.billing_mode === 'video') {
     form.billing_mode = source.billing_mode
   }
-  if (source.request_format === 'sd25' || source.request_format === 'opaigc') {
+  if (source.request_format === 'sd25' || source.request_format === 'opaigc' || source.request_format === 'yingxu') {
     form.request_format = source.request_format
   }
   return form
