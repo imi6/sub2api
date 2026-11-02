@@ -38,7 +38,8 @@ const billingOptions = computed(() => [
 const requestFormatOptions = computed(() => [
   { value: '', label: t('admin.accounts.seedance.requestFormats.passthrough') },
   { value: 'sd25', label: t('admin.accounts.seedance.requestFormats.sd25') },
-  { value: 'opaigc', label: t('admin.accounts.seedance.requestFormats.opaigc') }
+  { value: 'opaigc', label: t('admin.accounts.seedance.requestFormats.opaigc') },
+  { value: 'yingxu', label: t('admin.accounts.seedance.requestFormats.yingxu') }
 ])
 
 const effectiveBillingMode = computed(() => profile.value.billing_mode || defaults.value.billing_mode)
