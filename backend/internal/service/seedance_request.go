@@ -15,6 +15,7 @@ const (
 	SeedanceRequestFormatPassthrough = ""
 	SeedanceRequestFormatSD25        = "sd25"
 	SeedanceRequestFormatOpaigc      = "opaigc"
+	SeedanceRequestFormatYingxu      = "yingxu"
 
 	seedanceDefaultRatio      = "16:9"
 	seedanceDefaultResolution = "720p"
@@ -33,7 +34,7 @@ var seedanceFrameKinds = []struct{ field, role string }{
 
 func isSeedanceRequestFormat(format string) bool {
 	switch format {
-	case SeedanceRequestFormatPassthrough, SeedanceRequestFormatSD25, SeedanceRequestFormatOpaigc:
+	case SeedanceRequestFormatPassthrough, SeedanceRequestFormatSD25, SeedanceRequestFormatOpaigc, SeedanceRequestFormatYingxu:
 		return true
 	}
 	return false
@@ -62,6 +63,8 @@ func convertSeedanceRequest(format string, body []byte, requestModel string) ([]
 		err = convertSeedanceSD25(req, requestModel)
 	case SeedanceRequestFormatOpaigc:
 		err = convertSeedanceOpaigc(req)
+	case SeedanceRequestFormatYingxu:
+		err = convertSeedanceYingxu(req)
 	default:
 		err = fmt.Errorf("unsupported seedance request_format %q", format)
 	}
@@ -228,4 +231,50 @@ func seedanceMediaItemURL(item any, key string) string {
 		}
 	}
 	return ""
+}
+
+// convertSeedanceYingxu targets 映序 (naiping.kismetq.com) /v1/videos.
+// Fields duration, ratio stay top-level (already matching). resolution is
+// dropped (the channel always delivers 720P). first_frame / last_frame become
+// the first/second entries of references with type "image"; reference_images,
+// reference_videos and reference_audios are merged into references in order.
+func convertSeedanceYingxu(req map[string]any) error {
+	// Drop resolution — the channel ignores it and rejects unknown fields.
+	delete(req, "resolution")
+	delete(req, "size")
+
+	var refs []any
+
+	// first_frame → references[0] type=image
+	for _, kind := range seedanceFrameKinds {
+		url, ok, err := seedanceFrameURL(req, kind.field)
+		if err != nil {
+			return err
+		}
+		if ok {
+			refs = append(refs, map[string]any{"type": "image", "url": url})
+		}
+		delete(req, kind.field)
+	}
+
+	// reference_images / reference_videos / reference_audios → references
+	for _, kind := range seedanceReferenceKinds {
+		urls, ok, err := seedanceReferenceURLs(req, kind.field, kind.key)
+		if err != nil {
+			return err
+		}
+		if ok {
+			// reference_images → "image", reference_videos → "video", reference_audios → "audio"
+			refType := strings.TrimSuffix(strings.TrimPrefix(kind.field, "reference_"), "s")
+			for _, url := range urls {
+				refs = append(refs, map[string]any{"type": refType, "url": url})
+			}
+		}
+		delete(req, kind.field)
+	}
+
+	if len(refs) > 0 {
+		req["references"] = refs
+	}
+	return nil
 }

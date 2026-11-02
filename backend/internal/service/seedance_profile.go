@@ -50,6 +50,9 @@ type SeedanceProfile struct {
 	FailureStatuses []string `json:"failure_statuses"`
 	// RequestFormat rewrites the client create body for the channel; empty passes it through.
 	RequestFormat string `json:"request_format"`
+	// SendIdempotencyKey injects an Idempotency-Key header on create requests
+	// using the stable request ID. Required by channels such as 映序 (yingxu).
+	SendIdempotencyKey bool `json:"send_idempotency_key"`
 }
 
 func seedancePresetProfile(preset string) SeedanceProfile {
