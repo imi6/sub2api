@@ -188,13 +188,23 @@ func TestConvertSeedanceRequestYingxuKeepsArkContent(t *testing.T) {
 }
 
 func TestResolveSeedanceProfileSendIdempotencyKey(t *testing.T) {
+	// yingxu implies the key even when the admin UI omits the flag.
 	account := &Account{Credentials: map[string]any{SeedanceProfileCredentialKey: map[string]any{
-		"preset":               "openai_videos",
-		"request_format":       "yingxu",
-		"send_idempotency_key": true,
+		"preset":         "openai_videos",
+		"request_format": "yingxu",
 	}}}
 	profile, err := account.ResolveSeedanceProfile()
 	require.NoError(t, err)
 	require.Equal(t, SeedanceRequestFormatYingxu, profile.RequestFormat)
 	require.True(t, profile.SendIdempotencyKey)
+
+	account.Credentials[SeedanceProfileCredentialKey] = map[string]any{"preset": "openai_videos", "send_idempotency_key": true}
+	profile, err = account.ResolveSeedanceProfile()
+	require.NoError(t, err)
+	require.True(t, profile.SendIdempotencyKey)
+
+	account.Credentials[SeedanceProfileCredentialKey] = map[string]any{"preset": "openai_videos", "request_format": "sd25"}
+	profile, err = account.ResolveSeedanceProfile()
+	require.NoError(t, err)
+	require.False(t, profile.SendIdempotencyKey)
 }
