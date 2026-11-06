@@ -50,8 +50,8 @@ type SeedanceProfile struct {
 	FailureStatuses []string `json:"failure_statuses"`
 	// RequestFormat rewrites the client create body for the channel; empty passes it through.
 	RequestFormat string `json:"request_format"`
-	// SendIdempotencyKey injects an Idempotency-Key header on create requests
-	// using the stable request ID. Required by channels such as 映序 (yingxu).
+	// SendIdempotencyKey injects a fresh Idempotency-Key header on create
+	// requests. Always on for request_format yingxu, which requires it.
 	SendIdempotencyKey bool `json:"send_idempotency_key"`
 }
 
@@ -133,6 +133,8 @@ func (a *Account) ResolveSeedanceProfile() (SeedanceProfile, error) {
 	if !isSeedanceRequestFormat(profile.RequestFormat) {
 		return SeedanceProfile{}, fmt.Errorf("unsupported seedance request_format %q", override.RequestFormat)
 	}
+	// 映序 rejects creates without Idempotency-Key, so the format implies it.
+	profile.SendIdempotencyKey = override.SendIdempotencyKey || profile.RequestFormat == SeedanceRequestFormatYingxu
 	if mode := strings.ToLower(strings.TrimSpace(override.BillingMode)); mode != "" {
 		if mode != SeedanceBillingTokens && mode != SeedanceBillingVideo {
 			return SeedanceProfile{}, fmt.Errorf("unsupported seedance billing_mode %q", override.BillingMode)

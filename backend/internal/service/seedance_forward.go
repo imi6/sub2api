@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -84,10 +85,10 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if endpoint == SeedanceEndpointCreate && profile.SendIdempotencyKey {
-		// Use the stable billing request ID as the idempotency key so retries
-		// for the same task always send the same value (8-128 chars, required by
-		// channels such as 映序).
-		req.Header.Set("Idempotency-Key", StableGrokVideoBillingRequestID(taskID))
+		// No task ID exists before create, so each create gets its own key.
+		// Client-supplied keys are not forwarded: they could collide across
+		// users sharing one upstream account and replay someone else's task.
+		req.Header.Set("Idempotency-Key", uuid.NewString())
 	}
 	if endpoint == SeedanceEndpointContent {
 		req.Header.Set("Accept", "*/*")
