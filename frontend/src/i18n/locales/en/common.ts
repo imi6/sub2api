@@ -180,6 +180,7 @@ export default {
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',
+    creationStudio: 'Creation Studio',
     modelPlaza: 'Model Plaza',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',

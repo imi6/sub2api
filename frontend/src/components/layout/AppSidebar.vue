@@ -109,12 +109,13 @@
             </span>
           </div>
 
-          <router-link
+          <component
             v-for="item in personalNavItems"
             :key="item.path"
-            :to="item.path"
+            :is="item.external ? 'a' : RouterLink"
+            v-bind="item.external ? { href: item.path, target: '_blank', rel: 'noopener noreferrer' } : { to: item.path }"
             class="sidebar-link mb-1"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+            :class="{ 'sidebar-link-active': !item.external && isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
             @click="handleMenuItemClick(item.path)"
@@ -122,19 +123,20 @@
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
-          </router-link>
+          </component>
         </div>
       </template>
 
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
-          <router-link
+          <component
             v-for="item in userNavItems"
             :key="item.path"
-            :to="item.path"
+            :is="item.external ? 'a' : RouterLink"
+            v-bind="item.external ? { href: item.path, target: '_blank', rel: 'noopener noreferrer' } : { to: item.path }"
             class="sidebar-link mb-1"
-            :class="{ 'sidebar-link-active': isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
+            :class="{ 'sidebar-link-active': !item.external && isActive(item.path), 'sidebar-link-collapsed': sidebarCollapsed }"
             :title="sidebarCollapsed ? item.label : undefined"
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
             @click="handleMenuItemClick(item.path)"
@@ -142,7 +144,7 @@
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
-          </router-link>
+          </component>
         </div>
       </template>
     </nav>
@@ -189,7 +191,7 @@
 
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
@@ -205,6 +207,8 @@ interface NavItem {
   label: string
   icon: unknown
   iconSvg?: string
+  /** 外链使用普通链接打开，避免被前端路由解析为站内路径。 */
+  external?: boolean
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -361,6 +365,8 @@ const UserIcon = {
       ]
     )
 }
+
+const CreationStudioIcon = { render: () => h(Icon, { name: 'sparkles' }) }
 
 const DocIcon = {
   render: () =>
@@ -735,8 +741,7 @@ const flagBatchImageAccess = () => canUseBatchImage.value
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
-// 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
+// 条目顺序：密钥 → 用量 → 可用渠道 → 创作台 → 渠道状态 → 订阅/支付 → 兑换/资料。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
@@ -747,6 +752,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: 'https://canvas.zzshu.cc/', label: t('nav.creationStudio'), icon: CreationStudioIcon, external: true, hideInSimpleMode: true },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
