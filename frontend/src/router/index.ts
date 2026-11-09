@@ -768,10 +768,15 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, _from, savedPosition) {
     // Scroll to saved position when using browser back/forward
     if (savedPosition) {
       return savedPosition
+    }
+    // 对接文档支持目录锚点及带章节的分享链接，避开固定顶栏。
+    if (to.name === 'VideoGuide' && to.hash) {
+      const section = document.getElementById(to.hash.slice(1))
+      if (section) return { el: section, top: 88 }
     }
     // Scroll to top for new routes
     return { top: 0 }
