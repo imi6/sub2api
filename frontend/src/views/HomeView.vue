@@ -40,6 +40,17 @@
           >
             <Icon name="book" size="md" />
           </a>
+          <a
+            href="https://canvas.zzshu.cc/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            :title="t('nav.creationStudio')"
+            :aria-label="t('nav.creationStudio')"
+          >
+            <Icon name="sparkles" size="md" />
+            <span class="hidden sm:inline">{{ t('nav.creationStudio') }}</span>
+          </a>
           <router-link
             v-if="showModelPlazaEntry"
             to="/model-plaza"
@@ -139,6 +150,19 @@
             :title="t('home.viewDocs')"
           >
             <Icon name="book" size="md" />
+          </a>
+
+          <!-- 创作台外链 -->
+          <a
+            href="https://canvas.zzshu.cc/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 rounded-lg p-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            :title="t('nav.creationStudio')"
+            :aria-label="t('nav.creationStudio')"
+          >
+            <Icon name="sparkles" size="md" />
+            <span class="hidden sm:inline">{{ t('nav.creationStudio') }}</span>
           </a>
 
           <!-- Model Plaza Link -->
