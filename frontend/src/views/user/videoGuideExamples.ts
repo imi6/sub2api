@@ -73,10 +73,12 @@ export function buildVideoGuideExamples(baseUrl: string): Record<VideoGuideExamp
       `  -o video.mp4`,
     ].join('\n'),
     python: `# 安装依赖：pip install requests
-# 运行前设置 API_KEY、VIDEO_MODEL；可选 API_BASE_URL（填写站点地址）。
+# 新建任务设置 API_KEY、VIDEO_MODEL；恢复已有任务改设 API_KEY、VIDEO_TASK_ID。
+# 可选 API_BASE_URL（填写站点地址）；恢复模式只查询和下载，不会重新提交。
 import os
 import tempfile
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -86,10 +88,9 @@ BASE = os.environ.get("API_BASE_URL", ${JSON.stringify(baseUrl)}).rstrip("/")
 if BASE.lower().endswith("/v1"):
     BASE = BASE[:-3]
 HEADERS = {"Authorization": "Bearer " + os.environ["API_KEY"]}
-MODEL = os.environ["VIDEO_MODEL"]
 output = Path("video.mp4")
 if output.exists():
-    raise RuntimeError("video.mp4 已存在，请另选文件名后再提交任务。")
+    raise RuntimeError("video.mp4 已存在，请另选文件名后再运行。")
 SUCCESS = {"completed", "succeeded", "success", "done"}
 FAILURE = {"failed", "error", "cancelled", "canceled", "expired"}
 RUNNING = {"queued", "pending", "processing", "running", "in_progress", "submitted", "created"}
@@ -106,21 +107,23 @@ def field(body, *paths):
                 return value
     return None
 
-# 只提交一次；网络异常不代表上游没有接受任务，切勿自动重发 POST。
-try:
-    with requests.post(BASE + "/v1/videos", headers=HEADERS, json={
-        "model": MODEL, "prompt": "一只猫沿着阳光下的海滩缓缓行走。",
-        "duration": 5, "ratio": "16:9", "resolution": "720p",
-    }, timeout=(10, 90), allow_redirects=False) as response:
-        if not 200 <= response.status_code < 300:
-            raise RuntimeError(f"提交返回 HTTP {response.status_code}：{response.text[:500]}")
-        created = response.json()
-except (requests.RequestException, ValueError) as error:
-    raise RuntimeError("未确认提交结果，请检查使用记录或联系支持；不要自动重新提交。") from error
-task_id = field(created, "id", "task_id", "request_id")
-if not isinstance(task_id, str) or not task_id.strip():
-    raise RuntimeError("响应中没有可识别的任务 ID，请保存响应并联系支持，避免重复提交。")
-print("任务 ID：", task_id)
+task_id = os.environ.get("VIDEO_TASK_ID", "").strip()
+if not task_id:
+    # 只提交一次；网络异常不代表上游没有接受任务，切勿自动重发 POST。
+    try:
+        with requests.post(BASE + "/v1/videos", headers=HEADERS, json={
+            "model": os.environ["VIDEO_MODEL"], "prompt": "一只猫沿着阳光下的海滩缓缓行走。",
+            "duration": 5, "ratio": "16:9", "resolution": "720p",
+        }, timeout=(10, 90), allow_redirects=False) as response:
+            if not 200 <= response.status_code < 300:
+                raise RuntimeError(f"提交返回 HTTP {response.status_code}：{response.text[:500]}")
+            created = response.json()
+    except (requests.RequestException, ValueError) as error:
+        raise RuntimeError("未确认提交结果，请检查使用记录或联系支持；不要自动重新提交。") from error
+    task_id = field(created, "id", "task_id", "request_id")
+    if not isinstance(task_id, str) or not task_id.strip():
+        raise RuntimeError("响应中没有可识别的任务 ID，请保存响应并联系支持，避免重复提交。")
+print("任务 ID（请保存，用 VIDEO_TASK_ID 可恢复）：", task_id, flush=True)
 task_url = BASE + "/v1/videos/" + quote(task_id, safe="")
 deadline = time.monotonic() + 30 * 60
 
@@ -129,7 +132,66 @@ def wait(seconds):
     if remaining > 0:
         time.sleep(min(seconds, remaining))
 
-# 仅查询可重试；429、5xx 和网络异常使用独立退避。
+
+def retry_delay(response, fallback):
+    try:
+        return max(fallback, float(response.headers.get("Retry-After", "0")))
+    except ValueError:
+        return fallback
+
+
+def check_quota(response):
+    if response.status_code != 429:
+        return
+    try:
+        detail = response.json()
+    except ValueError:
+        detail = {}
+    codes = " ".join(str(field(detail, path) or "").lower()
+                     for path in ("error.code", "error.type", "code", "type"))
+    message = str(field(detail, "error.message", "message", "error") or "")
+    exhausted = ("quota_exceeded", "quota_exhausted", "insufficient_quota", "insufficient_balance",
+                 "balance_exhausted", "subscription_expired", "subscription_limit_exceeded",
+                 "api_key_rate_5h_exceeded", "api_key_rate_1d_exceeded", "api_key_rate_7d_exceeded")
+    if any(marker in codes for marker in exhausted) or any(marker in message.lower() for marker in
+            ("余额不足", "余额已耗尽", "额度不足", "额度已用尽", "额度已耗尽", "配额已耗尽", "限额已用完",
+             "订阅已过期", "订阅已到期", "insufficient balance", "quota exhausted", "quota exceeded")):
+        raise RuntimeError(f"任务 {task_id} 被额度或订阅限制阻止，请处理后恢复：{message}")
+
+
+def result_url(body):
+    url = field(body, "url", "video.url", "content.video_url", "output.url", "video_url")
+    try:
+        parsed = urlparse(url) if isinstance(url, str) else None
+    except ValueError:
+        parsed = None
+    if parsed is not None and parsed.scheme in {"http", "https"} and parsed.hostname:
+        return url
+    return None
+
+
+def save_video(response):
+    media_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+    if not (media_type.startswith("video/") or media_type == "application/octet-stream"):
+        raise RuntimeError(f"下载并非视频文件，任务 {task_id}，Content-Type={media_type}")
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="wb", dir=".", suffix=".mp4.part", delete=False) as file:
+            temporary = Path(file.name)
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"下载等待已达上限，请用 VIDEO_TASK_ID 恢复：{task_id}")
+                if chunk:
+                    file.write(chunk)
+        if temporary.stat().st_size == 0:
+            raise RuntimeError(f"下载文件为空，请用任务 ID 重试下载：{task_id}")
+        temporary.replace(output)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+
+
+# 只重试同一任务的查询和下载；生成 completed 之后仍可能等待上游归档。
 backoff = 15
 while time.monotonic() < deadline:
     try:
@@ -141,28 +203,10 @@ while time.monotonic() < deadline:
         backoff = min(backoff * 2, 120)
         continue
     with response:
-        if response.status_code == 429:
-            try:
-                detail = response.json()
-            except ValueError:
-                detail = {}
-            codes = " ".join(str(field(detail, path) or "").lower()
-                             for path in ("error.code", "error.type", "code", "type"))
-            message = str(field(detail, "error.message", "message", "error") or "")
-            exhausted = ("quota_exceeded", "quota_exhausted", "insufficient_quota", "insufficient_balance",
-                         "balance_exhausted", "subscription_expired", "subscription_limit_exceeded",
-                         "api_key_rate_5h_exceeded", "api_key_rate_1d_exceeded", "api_key_rate_7d_exceeded")
-            if any(marker in codes for marker in exhausted) or any(marker in message.lower() for marker in
-                    ("余额不足", "余额已耗尽", "额度不足", "额度已用尽", "额度已耗尽", "配额已耗尽", "限额已用完",
-                     "订阅已过期", "订阅已到期", "insufficient balance", "quota exhausted", "quota exceeded")):
-                raise RuntimeError(f"任务 {task_id} 的查询被额度或订阅限制阻止，请处理后继续查询：{message}")
+        check_quota(response)
         if response.status_code == 429 or 500 <= response.status_code < 600:
-            try:
-                delay = max(backoff, float(response.headers.get("Retry-After", "0")))
-            except ValueError:
-                delay = backoff
             print(f"查询 HTTP {response.status_code}，稍后重试；任务 {task_id}")
-            wait(delay)
+            wait(retry_delay(response, backoff))
             backoff = min(backoff * 2, 120)
             continue
         if not 200 <= response.status_code < 300:
@@ -173,53 +217,62 @@ while time.monotonic() < deadline:
             raise RuntimeError(f"查询响应不是 JSON，请保存任务 ID 以便恢复：{task_id}") from error
     state = str(field(result, "status", "state") or "").lower()
     print("任务状态：", state or "未返回状态")
-    if state in SUCCESS:
-        break
     if state in FAILURE:
         reason = field(result, "fail_reason", "error.message", "message", "error") or state
         raise RuntimeError(f"任务 {task_id} 已失败：{reason}")
-    if state not in RUNNING:
+    if state not in SUCCESS and state not in RUNNING:
         raise RuntimeError(f"无法识别状态结构，请保存响应与任务 ID 联系支持：{task_id}")
-    backoff = 15
-    wait(15)
-else:
-    raise TimeoutError(f"已停止等待，任务并未被取消；稍后可用相同密钥继续查询：{task_id}")
+    if state not in SUCCESS:
+        backoff = 15
+        wait(15)
+        continue
 
-# 先下载本站 /content；仅第三方结果链接使用无本站密钥的新请求。
-temporary = None
-try:
-    download = requests.get(task_url + "/content", headers=HEADERS, stream=True,
-                            timeout=(10, 90), allow_redirects=False)
-    if download.status_code == 404:
-        download.close()
-        url = field(result, "url", "video.url", "content.video_url", "output.url", "video_url")
-        try:
-            parsed = urlparse(url) if isinstance(url, str) else None
-        except ValueError:
-            parsed = None
-        if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            raise RuntimeError(f"下载端点不可用且没有有效结果链接，请保存任务 ID 联系支持：{task_id}")
-        # 独立请求不附带 HEADERS，结果域名及后续重定向都不会收到本站 API 密钥。
-        download = requests.get(url, stream=True, timeout=(10, 90), allow_redirects=True)
-    with download as response:
-        if not 200 <= response.status_code < 300:
-            raise RuntimeError(f"下载失败，任务 {task_id}，HTTP {response.status_code}；可单独重试下载。")
-        media_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
-        if not (media_type.startswith("video/") or media_type == "application/octet-stream"):
-            raise RuntimeError(f"下载并非视频文件，任务 {task_id}，Content-Type={media_type}")
-        with tempfile.NamedTemporaryFile(mode="wb", dir=".", suffix=".mp4.part", delete=False) as file:
-            temporary = Path(file.name)
-            for chunk in response.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    file.write(chunk)
-        if temporary.stat().st_size == 0:
-            raise RuntimeError(f"下载文件为空，请用任务 ID 重试下载：{task_id}")
-        temporary.replace(output)
-except (requests.RequestException, OSError) as error:
-    raise RuntimeError(f"下载未完成，请用任务 ID 单独重试下载：{task_id}") from error
-finally:
-    if temporary is not None and temporary.exists():
-        temporary.unlink()
+    try:
+        # 先下载本站 /content；仅结果直链使用不带本站密钥的新请求。
+        with ExitStack() as responses:
+            download = responses.enter_context(requests.get(task_url + "/content", headers=HEADERS,
+                    stream=True, timeout=(10, 90), allow_redirects=False))
+            archive_pending = False
+            if download.status_code == 409:
+                # 只识别此明确错误，其他 409 不自动重试。兼容纯文本及 JSON 正文。
+                archive_pending = "video archive is not ready" in download.text.lower()
+            if download.status_code == 404 or archive_pending:
+                url = result_url(result)
+                delay = retry_delay(download, backoff)
+                download.close()
+                if url:
+                    download = responses.enter_context(requests.get(url, stream=True,
+                            timeout=(10, 90), allow_redirects=True))
+                elif archive_pending:
+                    print(f"生成已完成，上游视频归档尚未就绪；稍后查询并重试下载，任务 {task_id}")
+                    wait(delay)
+                    backoff = min(backoff * 2, 120)
+                    continue
+                else:
+                    raise RuntimeError(f"下载端点不可用且没有有效结果链接，请联系支持：{task_id}")
+            check_quota(download)
+            if download.status_code == 429 or 500 <= download.status_code < 600:
+                delay = retry_delay(download, backoff)
+                print(f"下载 HTTP {download.status_code}，稍后重新查询并重试；任务 {task_id}")
+                download.close()
+                wait(delay)
+                backoff = min(backoff * 2, 120)
+                continue
+            if not 200 <= download.status_code < 300:
+                raise RuntimeError(f"下载失败，任务 {task_id}，HTTP {download.status_code}：{download.text[:500]}")
+            save_video(download)
+        break
+    except TimeoutError:
+        raise
+    except requests.RequestException as error:
+        print(f"下载网络异常，稍后重试同一任务 {task_id}：{error}")
+        wait(backoff)
+        backoff = min(backoff * 2, 120)
+    except OSError as error:
+        raise RuntimeError(f"文件未保存，请检查磁盘后用 VIDEO_TASK_ID 恢复：{task_id}") from error
+else:
+    raise TimeoutError(f"已达本地等待上限，任务未取消。设置 VIDEO_TASK_ID={task_id} 并使用原密钥可恢复；"
+                       "若长期提示归档未就绪且无结果链接，请联系支持排查上游归档，不要重新生成。")
 print("视频已保存：", output.resolve())`,
     error: JSON.stringify({
       error: { type: 'invalid_request_error', message: 'model is required' },
