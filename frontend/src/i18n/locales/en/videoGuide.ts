@@ -82,25 +82,27 @@ export default {
         intro: 'Use the task ID to query progress after creation. HTTP 200 means the status request succeeded; inspect the task status to determine whether generation is complete.',
         notes: {
           interval: 'Start with a polling interval of 10 to 30 seconds and adjust for task duration, model guidance and rate limits. Retry only status requests with increasing backoff on temporary network errors, rate limits or recoverable service errors. Resolve balance, quota or permission errors first without creating another task.',
-          statuses: 'Queued, processing, successful and failed states have different names across channels. progress may be absent and is not sufficient to determine completion. Do not treat an unknown status as success.',
+          statuses: 'Queued, processing, successful and failed states have different names across channels. progress may be absent and is not sufficient to determine completion. Do not treat an unknown status as success. A successful status such as completed may describe generation only while archiving or storage is still processing. Check the status response and download result for file readiness.',
           timeout: 'Set an explicit client-side waiting limit. Reaching it does not cancel the task: keep the ID and resume polling later. On terminal failure, read the reason and stop polling that task.',
         },
       },
       download: {
         title: 'Retrieve and save the video',
-        intro: 'Fetch the file after confirming a successful task state. Save the result promptly because temporary download URLs may expire.',
+        intro: 'After generation succeeds, try retrieving the video and check whether the file is ready. Save an available result promptly because temporary download URLs may expire.',
         notes: {
-          content: 'Where supported by the model, call /v1/videos/task-ID/content with the API key used to create the task. Some channels do not provide this endpoint and return 404; check the status response for a result URL instead.',
+          archive: 'A completed generation does not guarantee a downloadable file. If /content returns HTTP 409 with the explicit message video archive is not ready, upstream archiving is not ready. Wait, then check and download the same task again without submitting another generation. Handle other 409 responses according to their body; do not assume they all mean archiving is pending.',
+          content: 'Where supported by the model, call /v1/videos/task-ID/content with the API key used to create the task. Some channels do not offer this endpoint and return 404. The example only tries a complete result URL already present in the status response after a 404 or the explicit archive-not-ready 409 described above.',
           url: 'Result URLs may appear in url, video.url, content.video_url, output.url or nested data. Use the full returned URL with its signature parameters intact. Do not construct file paths or attach your platform API key when downloading an external result URL directly.',
           range: 'Check the HTTP status and Content-Type before saving, so a JSON or HTML error is not stored as an MP4. The download endpoint forwards Range requests, but resumable downloads depend on the channel. Confirm support through 206 and Content-Range responses.',
+          stalled: 'Without a usable direct result URL in the status response, this platform cannot bypass upstream archiving to retrieve the file. If storage remains processing or archive-not-ready responses persist, give support the task ID, submission and query times, status and download responses, and trace IDs such as X-Request-ID so they can investigate upstream. Repeating generation does not repair the original task.',
         },
       },
       python: {
         title: 'Complete Python example',
-        intro: 'The example connects task creation, polling and result download after you choose a model. Running it submits a generation task and incurs charges according to that model.',
+        intro: 'The example can create a task or resume status checks and downloads using an existing task ID. Creating a task incurs charges according to the model. Setting VIDEO_TASK_ID enables resume mode without sending a create request.',
         notes: {
-          setup: 'Install requests and set API_KEY and VIDEO_MODEL in the runtime environment. API_BASE_URL is optional and defaults to the platform base URL shown above. Adjust the prompt, duration, aspect ratio and resolution for the selected model.',
-          behavior: 'Creation is sent once. Status requests back off and retry on network failures and recoverable responses. The example handles common ID, status and result fields and preserves the task ID on a client timeout. Adjust field parsing if your model returns a different structure.',
+          setup: 'Install requests and set API_KEY. For a new task, also set VIDEO_MODEL and adjust the prompt, duration, aspect ratio and resolution. To resume, set the full VIDEO_TASK_ID and use the original API key and group; VIDEO_MODEL is not required. API_BASE_URL is optional and defaults to the platform base URL above.',
+          behavior: 'Creation is sent once; resume mode sends no POST. Status requests back off on network errors and recoverable responses. An explicit archive-not-ready 409 keeps the same task waiting for download. The default total waiting limit is 30 minutes, a client limit rather than a service completion guarantee. Timeout does not cancel the task: save the ID and resume with VIDEO_TASK_ID. Adapt field parsing for models that return a different structure.',
         },
       },
       errors: {
@@ -132,7 +134,7 @@ export default {
       polling: 'cURL (Bash) · Check task status',
       pollingResponse: 'JSON · Example successful response',
       download: 'cURL (Bash) · Download the video',
-      python: 'Python · Create once, poll and save',
+      python: 'Python · Create or resume, poll and save',
       error: 'JSON · Example error structure',
     },
     columns: {
@@ -179,7 +181,7 @@ export default {
     statuses: {
       queued: 'Accepted or queued. Keep the task ID and continue polling.',
       processing: 'Generating or preparing the result. Continue polling; progress is informational.',
-      completed: 'Generation succeeded. Retrieve the file through result fields or the download endpoint.',
+      completed: 'Generation succeeded, but archiving or storage may still be processing. Try retrieving the result and inspect the download response; the file may not be available immediately.',
       failed: 'Failed, cancelled or expired. Stop polling, inspect the reason and check charges.',
       unknown: 'Unrecognized state. Do not assume success; verify the status field and values against model guidance.',
     },
@@ -195,7 +197,7 @@ export default {
       unauthorized: 'The key is missing, invalid or disabled. Check the Authorization: Bearer format and the active API key.',
       forbidden: 'Group, model, account or content restrictions. Check Available Channels and the error details.',
       notFound: 'The path, task or model is unavailable. The key or group may differ, or the channel may not offer the download endpoint.',
-      conflict: 'A state conflict, such as a result that is not ready. Follow the error details and continue polling instead of creating again.',
+      conflict: 'A state conflict. Only an explicit video archive is not ready message from /content means waiting and retrying status and download requests for the same task. Handle other 409 responses according to their body without automatically generating again.',
       tooLarge: 'The request body or media exceeds size limits. Reduce media, compress files and check model constraints.',
       unsupported: 'Unsupported request Content-Type or media type. The Seedance endpoint documented here uses application/json.',
       rateLimit: 'May indicate rate, concurrency, balance, quota or subscription limits. For rate limits, honor Retry-After, lower concurrency and back off. For exhausted balance or quota, follow the error to top up, adjust limits or wait for a reset instead of retrying indefinitely.',

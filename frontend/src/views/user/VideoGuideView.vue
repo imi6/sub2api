@@ -253,8 +253,10 @@ const sections = computed<GuideSection[]>(() => [
     list('polling', ['interval', 'statuses', 'timeout']),
   ]),
   section('download', [
+    note('download', 'archive', true),
     code('download'),
     list('download', ['content', 'url', 'range']),
+    note('download', 'stalled', true),
   ]),
   section('python', [
     list('python', ['setup', 'behavior']),
