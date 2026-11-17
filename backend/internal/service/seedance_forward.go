@@ -35,7 +35,7 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 	}
 	target, err := seedanceTargetURL(base, profile, endpoint, strings.TrimPrefix(taskID, "seedance:"))
 	if errors.Is(err, errSeedanceEndpointUnsupported) {
-		writeGrokMediaErrorResponse(c, http.StatusNotFound, "not_found_error", "This Seedance channel does not support this endpoint")
+		writeGrokMediaErrorResponse(c, http.StatusNotFound, "not_found_error", "This Seedance channel does not support this endpoint", "")
 		return nil, err
 	}
 	if err != nil {
@@ -58,7 +58,7 @@ func (s *OpenAIGatewayService) ForwardSeedance(ctx context.Context, c *gin.Conte
 		}
 		body, err = convertSeedanceRequest(profile.RequestFormat, body, model)
 		if err != nil {
-			writeGrokMediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			writeGrokMediaErrorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error(), "")
 			return nil, err
 		}
 		method = http.MethodPost
@@ -228,7 +228,7 @@ func (s *OpenAIGatewayService) followSeedanceContentRedirects(ctx context.Contex
 		}
 		hopResp, err := s.httpUpstream.Do(req, proxy, account.ID, account.Concurrency)
 		if err != nil {
-			writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Seedance content redirect download failed")
+			writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Seedance content redirect download failed", "")
 			return nil, fmt.Errorf("seedance content redirect: %w", err)
 		}
 		_ = resp.Body.Close()
@@ -247,7 +247,7 @@ func isSeedanceContentRedirect(status int) bool {
 
 func (s *OpenAIGatewayService) finishSeedanceContent(c *gin.Context, resp *http.Response, taskID string, started time.Time) (*OpenAIForwardResult, error) {
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Seedance content redirect could not be followed")
+		writeGrokMediaErrorResponse(c, http.StatusBadGateway, "upstream_error", "Seedance content redirect could not be followed", "")
 		return nil, fmt.Errorf("seedance content redirect could not be followed (status %d)", resp.StatusCode)
 	}
 	if resp.StatusCode >= 400 && resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
